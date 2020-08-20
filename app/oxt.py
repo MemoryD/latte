@@ -1,6 +1,7 @@
 import numpy as np
 import os
 
+
 def oxts2pose(oxts):
     # function pose = convertOxtsToPose(oxts)
     # % converts a list of oxts measurements into metric poses,
@@ -16,8 +17,7 @@ def oxts2pose(oxts):
     # % init pose
     pose = []
     Tr_0_inv = np.zeros((4,4))
-    for i in range(len(oxts)):  
-        
+    for i in range(len(oxts)):
         # translation vector
         tx, ty = latlon2mercator(oxts[i][0], oxts[i][1], scale)
         tz = oxts[i][2]
@@ -37,15 +37,15 @@ def oxts2pose(oxts):
                        [np.sin(rz),  np.cos(rz), 0], 
                        [         0,           0, 1]]) # base => nav  (level oxts => rotated oxts)
         R  = Rz.dot(Ry.dot(Rx))
-          
+
         g = np.vstack((np.hstack((R, t)), np.array([0, 0, 0, 1])))
         # normalize translation and rotation (start at 0/0/0)
         if i == 0:
             Tr_0_inv = np.linalg.inv(g)
-      
+
         # add pose
         pose.append(Tr_0_inv.dot(g))
-    print(pose[0].shape)
+    # print(pose[0].shape)
     return pose
 
 
@@ -53,6 +53,7 @@ def lat2scale(lat):
     # compute mercator scale from latitude
     scale = np.cos(lat * np.pi / 180.0)
     return scale
+
 
 def latlon2mercator(lat, lon, scale):
     # converts lat/lon coordinates to mercator coordinates using mercator scale
@@ -62,6 +63,7 @@ def latlon2mercator(lat, lon, scale):
     my = scale * er * np.log10(np.tan((90+lat) * np.pi / 360))
     return mx, my
 
+
 def load_oxts_lite_data(base_dir, frames):
     # reads GPS/IMU data from files to memory. requires base directory
     # (=sequence directory as parameter). if frames is not specified, loads all frames.
@@ -69,7 +71,6 @@ def load_oxts_lite_data(base_dir, frames):
     for frame in frames:
         fname = frame.split(".")[0]
         filename = os.path.join(base_dir,'oxts/', fname + '.txt')
-        print(filename)
+        # print(filename)
         oxts.append(np.loadtxt(filename))
     return oxts
-

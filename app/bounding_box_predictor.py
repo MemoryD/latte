@@ -1,5 +1,6 @@
 import matplotlib
-matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+import time
 import numpy as np
 from scipy.spatial import cKDTree
 from models import BoundingBox, Frame
@@ -8,8 +9,9 @@ from os import listdir
 from oxt import load_oxts_lite_data, oxts2pose
 from frame_handler import FrameHandler
 from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.pyplot as plt
-import time
+
+matplotlib.use('TkAgg')
+
 
 class BoundingBoxPredictor():
     def __init__(self, frame_handler):
@@ -20,42 +22,6 @@ class BoundingBoxPredictor():
         self.th_dist=.2
 
         self.frame_handler = frame_handler
-        self.oxt_path = "oxts/"
-        self.oxts = {drive: load_oxts_lite_data(join(FrameHandler.DATASET_DIR, drive), self.frame_handler.drives[drive]) 
-                    for drive in self.frame_handler.drives.keys()}
-        self.poses = {drive: oxts2pose(self.oxts[drive]) for drive in self.oxts.keys()}
-
-    def transform_coords(self, fname, x, inv=False):
-        if x.size == 2:
-            x = np.append(x, [0, 1])
-        if x.size == 3:
-            x = np.append(x, [1])
-        idx = self.frame_handler.frame_names.index(fname)
-        transform = self.poses[idx]
-        if inv:
-            transform = np.linalg.inv(transform)
-
-        return transform @ x
-
-    def get_velocities(self, prev_frame, cur_frame, ref_fname):
-        bounding_boxes = sorted(cur_frame.bounding_boxes, 
-                                key=lambda box: box.box_id)
-        velocities = {}
-        prev_frame_bounding_boxes = {box.box_id:box for box in prev_frame.bounding_boxes}
-        for i, box in enumerate(bounding_boxes):
-            box_id = box.box_id
-            print(box_id)
-            cur_center = box.center
-
-            if box_id in prev_frame_bounding_boxes:
-                prev_center = prev_frame_bounding_boxes[box_id].center
-                cur_center_corr = self.transform_coords(cur_frame.fname, cur_center)
-                prev_center_corr = self.transform_coords(prev_frame.fname, prev_center)
-                velocities[box_id] = self.transform_coords(ref_fname, 
-                                                           cur_center - prev_center,
-                                                           inv=True)[:2]
-
-        return velocities
 
     def predict_next_frame_bounding_boxes(self, frame):
         drivename, fname = frame.fname.split('.')[0].split("/")
@@ -65,13 +31,13 @@ class BoundingBoxPredictor():
 
         pc = self.frame_handler.get_pointcloud(drivename, fname, dtype=float, ground_removed=True)
         next_pc = self.frame_handler.get_pointcloud(drivename, next_fname, dtype=float, ground_removed=True)
-        print(fname)
-        print([box.box_id for box in frame.bounding_boxes])
-        bounding_boxes = sorted(frame.bounding_boxes, 
-                            key=lambda box:box.box_id)
+        # print(fname)
+        # print([box.box_id for box in frame.bounding_boxes])
+        bounding_boxes = sorted(frame.bounding_boxes,
+                                key=lambda box:box.box_id)
         centers = {box.box_id:box.center for box in bounding_boxes}
         velocities = {box_id:np.zeros(2) for box_id in centers.keys()}
-        
+
         next_pc[:,2] = 0
         next_pc = next_pc[:,:3]
         np.random.shuffle(next_pc)
@@ -92,7 +58,6 @@ class BoundingBoxPredictor():
         without_cluster, cluster = bounding_box.filter_pointcloud(pc)
         np.random.shuffle(cluster)
         sample_indices = []
-
 
         kd_tree = cKDTree(pc)
         # for point in cluster:
@@ -121,7 +86,6 @@ class BoundingBoxPredictor():
         # seeds = kd_tree.query(point, 50)
 
         dists, sample_indices = kd_tree.query(point, 50)
-
 
         # cluster_res = self.find_cluster(sample_indices, pc_trimmed, th_dist=.4, num_nn=20, num_samples=20)
         # edges, corners = self.search_rectangle_fit(cluster_res['cluster'], variance_criterion)
@@ -153,15 +117,13 @@ class BoundingBoxPredictor():
         top_right_corner = top_right_corner - top_left_corner
         angle = np.arctan2(top_right_corner[1], top_right_corner[0])
         top_right_corner += top_left_corner
-        
+
         if context:
             candidate_angles = np.array([angle-np.pi, angle, angle+np.pi])
             prev_angle = context.angle
             angle = candidate_angles[np.argmin(np.abs(candidate_angles - prev_angle))]
 
-        
-
-        bounding_box = {"center":center.tolist(), "angle":angle, "width":w, "length":l, 
+        bounding_box = {"center":center.tolist(), "angle":angle, "width":w, "length":l,
                         "corner1":top_right_corner.tolist(), "corner2":bottom_left_corner.tolist()}
 
         return bounding_box
@@ -200,7 +162,6 @@ class BoundingBoxPredictor():
         seeds = np.vstack((point, seeds))
 
         dists, sample_indices = kd_tree.query(seeds)
-
 
         cluster_res = self.find_cluster(sample_indices, png_trimmed, th_dist=.5, num_nn=20, num_samples=20)
         edges, corners = self.search_rectangle_fit(cluster_res["cluster"], variance_criterion)
@@ -251,15 +212,15 @@ class BoundingBoxPredictor():
                         if nn_indices[i] not in seen and dists[i] < th_dist:
                             seen.add(nn_indices[i])
                             queue.append(nn_indices[i])
-                
+
             clusters.append(np.vstack(cluster))
             seen_indices.append(np.array(list(seen)))
-        
+
         overlapping_clusters = []
         # for i in range(len(seen_indices)):
         #     num_overlapping =  sum([len(np.intersect1d(seen_indices[i], seen_indices[j]))/len(seen_indices[i]) > overlap_thresh for j in range(len(seen_indices)) if j!=i])
         #     overlapping_clusters.append(num_overlapping)
-        
+
         # largest_cluster = np.argmax(overlapping_clusters)
         # res = {"cluster": clusters[largest_cluster], "indices": seen_indices[largest_cluster]}
 
@@ -267,7 +228,6 @@ class BoundingBoxPredictor():
         largest_cluster = max(clusters, key=lambda cl:len(cl))
         res = {"cluster": largest_cluster, "indices": largest_cluster}
         return res
-            
 
     def ground_plane_fitting(self, pc):
         x_max, x_min = np.max(pc[:,0]), np.min(pc[:,0])
@@ -324,7 +284,7 @@ class BoundingBoxPredictor():
         def model(p):
             return abs((p - s_hat) @ n)
         return model
-            
+
     def search_rectangle_fit(self, pc, criterion):
         pc = pc[:,:2]
         Q = dict()
@@ -340,7 +300,7 @@ class BoundingBoxPredictor():
         # print(theta_star)
         C1_star = pc @ np.array([np.cos(theta_star), np.sin(theta_star)])
         C2_star = pc @ np.array([-np.sin(theta_star), np.cos(theta_star)])
-        
+
         a1, b1, c1 = np.cos(theta_star), np.sin(theta_star), np.min(C1_star)
         a2, b2, c2 = -np.sin(theta_star), np.cos(theta_star), np.min(C2_star)
         a3, b3, c3 = np.cos(theta_star), np.sin(theta_star), np.max(C1_star)
@@ -353,12 +313,13 @@ class BoundingBoxPredictor():
         return [(a1, b1, c1), (a2, b2, c2), 
                 (a3, b3, c3), (a4, b4, c4)], np.vstack([v1, v2, v3, v4])
 
+
 def line_intersection(a1, b1, c1, a2, b2, c2):
     x = (c1*b2 - c2*b1) / (a1*b2 - a2*b1)
     y = (c1*a2 - c2*a1) / (b1*a2 - b2*a1)
     return np.array([x, y])
 
-        
+
 def variance_criterion(C1, C2):
     c1_max, c1_min = np.max(C1), np.min(C1)
     c2_max, c2_min = np.max(C2), np.min(C2)
@@ -370,6 +331,7 @@ def variance_criterion(C1, C2):
     E2 = D2[np.where(D2 < D1)[0]]
     gamma = -np.var(E1) - np.var(E2)
     return gamma
+
 
 def closeness_criterion(C1, C2, d=1e-4):
     c1_max, c1_min = np.max(C1), np.min(C1)
@@ -387,7 +349,7 @@ def closeness_criterion(C1, C2, d=1e-4):
 # if __name__ == '__main__':
 #   DATA_DIR = 'input/bin_data'
 #   OUT_DIR = 'input/ground_removed'
-#   bin_data  = sorted([f for f in listdir(DATA_DIR) 
+#   bin_data  = sorted([f for f in listdir(DATA_DIR)
 #                       if isfile(join(DATA_DIR, f)) and '.bin' in f])
 
 #   frame_names = [f.split(".")[0] for f in bin_data]
@@ -411,8 +373,3 @@ def closeness_criterion(C1, C2, d=1e-4):
 #       print('output shape: {}'.format(output.shape))
 #       save_filename = join(OUT_DIR, fname.split(".")[0] + ".bin")
 #       output.astype(np.float32).tofile(save_filename)
-
-
-
-
-
